@@ -13,6 +13,7 @@
 这里封装一个函数来创建子进程
 
 ```py
+# client.py
 import os
 
 def create_child():
@@ -24,3 +25,8 @@ def create_child():
     else:
         raise Exception
 ```
+
+## 生成多个子进程
+
+
+
