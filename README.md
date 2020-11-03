@@ -364,7 +364,7 @@ def pi(n):
     return math.sqrt(8 * s)
 
 start = time.time()
-print(pi(100000000))
+print(pi(100000000))            # 迭代一亿次
 end = time.time()
 
 print(f'time: {end - start}')
@@ -376,4 +376,73 @@ print(f'time: {end - start}')
 leo@192 test $ python3 tmp.py 
 3.141592647851581
 time: 23.279133796691895
+```
+
+在介绍操作系统原生的进程间通信方式之前，我们先看看用redis实现多进程并发计算之间的通信
+
+```py
+from math import sqrt
+from os import waitpid
+import time
+import redis
+import math
+import os
+import sys
+
+
+
+def slice(mink, maxk):
+    s = 0.0
+    for k in range(int(mink), int(maxk)):
+        s += 1.0/(2*k+1)/(2*k+1)
+    return s
+
+
+def pi(n):
+    pids = []
+    unit = n / 10  # 分成10份，unit为1千万
+    
+    client = redis.StrictRedis()
+    client.delete('result')       # 保证结果集是干净的
+    del client                    # 关闭连接
+
+    for i in range(10):
+        mink = unit * i        # mink的值分别是0, 1千万 ... 9千万
+        maxk = mink + unit     # maxk的值分别是1千万, .....1亿
+
+        pid = os.fork()
+        if pid > 0:
+            pids.append(pid)                   # 在父进程中，收集开过的子进程的pid
+        else:
+            s = slice(mink, maxk)
+            client = redis.StrictRedis()
+            client.rpush('result', str(s))     # 在子进程计算，并把结果发给redis
+            sys.exit(0)                         # 然后子进程退出
+    
+    for pid in pids:
+        os.waitpid(pid, 0)   # 等待子进程结束
+
+    all_s = 0
+    client = redis.StrictRedis()
+    for s in client.lrange('result', 0, -1):
+        all_s += float(s)   # 把redis中存的字符串转换成float
+    
+    return math.sqrt(all_s * 8)
+
+
+start = time.time()
+
+print(pi(100000000))    # 迭代一亿次
+
+end = time.time()
+
+print(f'time: {end - start}')
+```
+
+这次用了10多秒
+
+```
+leo@192 test $ python3 tmp.py 
+3.141592650405625
+time: 14.501644849777222
 ```
