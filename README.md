@@ -2,12 +2,18 @@
 
 > 参考：https://juejin.im/post/6844903613353951240 and https://juejin.im/post/6844903613425270797
 
+第一部分：进程基础
+
 - [生成子进程](#生成子进程)
 - [生成多个子进程](#生成多个子进程)
 - [杀死子进程](#杀死子进程)
 - [僵尸进程](#僵尸进程)
 - [收割子进程](#收割子进程)
 - [捕获信号](#捕获信号)
+
+第二部分：进程间通信
+
+- [多进程并行计算实例](#多进程并行计算实例)
 
 ## 生成子进程
 
@@ -337,4 +343,37 @@ in child process
 in child process
 in child process
 child will die
+```
+
+## 多进程并行计算实例
+
+我们用下面的公式来计算圆周率PI
+
+![圆周率公式](https://s1.ax1x.com/2020/11/03/Byg3Hf.png)
+
+首先我们直接在一个进程中进行1亿次的迭代运算
+
+```py
+import time
+import math
+
+def pi(n):
+    s = 0.0
+    for i in range(n):
+        s += 1.0/(2*i+1)/(2*i+1)
+    return math.sqrt(8 * s)
+
+start = time.time()
+print(pi(100000000))
+end = time.time()
+
+print(f'time: {end - start}')
+```
+
+结果是耗时20多秒
+
+```
+leo@192 test $ python3 tmp.py 
+3.141592647851581
+time: 23.279133796691895
 ```
