@@ -7,6 +7,7 @@
 - [杀死子进程](#杀死子进程)
 - [僵尸进程](#僵尸进程)
 - [收割子进程](#收割子进程)
+- [捕获信号](#捕获信号)
 
 ## 生成子进程
 
@@ -187,3 +188,153 @@ root     13081 13080  0 18:27 pts/1    00:00:00 [python] <defunct>
 
 ## 收割子进程
 
+`waitpid(pid, options)`父进程中调用这个函数可以收割子进程。这个函数的返回值是一个tuple。第一个元素是子进程的id。第二个元素在不同的操作系统上含义是不同的。在Unix上，它通常的value是一个16位的整数值，前8位表示进程的退出状态，后8位表示导致进程退出的信号的整数值。
+
+```py
+import os
+import time
+import signal
+
+
+def create_child():
+    pid = os.fork()
+    if pid < 0:
+        raise Exception
+    return pid
+
+
+pid = create_child()
+if pid == 0:
+    while True:
+        print('in child process')
+        time.sleep(1)
+
+else:
+    print('in parent process')
+    time.sleep(5)
+    os.kill(pid, signal.SIGTERM)
+    ret = os.waitpid(pid, 0)
+    print(f'ret = {ret}')
+    time.sleep(5)
+```
+
+打印输出
+
+```
+leo@192 test $ python3 tmp.py 
+in parent process
+in child process
+in child process
+in child process
+in child process
+in child process
+in child process
+ret = (13191, 15)
+```
+
+## 捕获信号
+
+在默认情况下，子进程收到`SIGTERM`信号就会自己退出。我们也可以自定义信号的处理函数
+
+我们让子进程忽略`SIGTERM`信号，看看会有什么效果
+
+```py
+import os
+import time
+import signal
+
+
+def create_child():
+    pid = os.fork()
+    if pid < 0:
+        raise Exception
+    return pid
+
+
+pid = create_child()
+
+if pid == 0:
+    # 这里设置子进程的信号处理，SIG_IGN会忽略SIGTERM信号
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    while True:
+        print('in child process')
+        time.sleep(1)
+
+else:
+    print('in parent process')
+    time.sleep(5)
+    os.kill(pid, signal.SIGTERM)    # 向子进程发退出信号
+    print('SIGTERM send...')
+    time.sleep(5)
+    os.kill(pid, signal.SIGKILL)    # 向子进程发SIGKILL信号
+    print('SIGKILL send...')
+    time.sleep(5)
+```
+
+可以看到，在父进程发了`SIGTERM`后，子进程忽略的这个信号，并继续运行。直到父进程发`SIGKILL`信号
+
+```
+leo@192 test $ python3 tmp.py 
+in parent process
+in child process
+in child process
+in child process
+in child process
+in child process
+in child process
+SIGTERM send...
+in child process
+in child process
+in child process
+in child process
+in child process
+SIGKILL send...
+```
+
+`signal(int signum, sighandler_t handler)`函数的第二个参数处理预定义的，也可以自己实现
+
+信号处理函数有两个参数，第一个sig_num表示被捕获信号的整数值，第二个frame不太好理解，一般也很少用。它表示被信号打断时，Python的运行的栈帧对象信息。读者可以不必深度理解。
+
+```py
+import os
+import time
+import signal
+import sys
+
+
+def create_child():
+    pid = os.fork()
+    if pid < 0:
+        raise Exception
+    return pid
+
+def i_will_die(sig_num, frame):
+    print('child will die')
+    sys.exit(0)
+
+pid = create_child()
+if pid == 0:
+    signal.signal(signal.SIGTERM, i_will_die)
+    while True:
+        print('in child process')
+        time.sleep(1)
+
+else:
+    print('in parent process')
+    time.sleep(5)
+    os.kill(pid, signal.SIGTERM)
+    time.sleep(5)
+```
+
+这次再运行，可以看到自定义handler中的输出
+
+```
+leo@192 test $ python3 tmp.py 
+in parent process
+in child process
+in child process
+in child process
+in child process
+in child process
+child will die
+```
