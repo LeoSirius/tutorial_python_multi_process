@@ -14,6 +14,8 @@
 第二部分：进程间通信
 
 - [多进程并行计算实例](#多进程并行计算实例)
+- [文件](#文件)
+- [管道pipe](#管道pipe)
 
 ## 生成子进程
 
@@ -416,7 +418,7 @@ def pi(n):
         else:
             s = slice(mink, maxk)
             client = redis.StrictRedis()
-            client.rpush('result', str(s))     # 在子进程计算，并把结果发给redis
+            client.rpush('result', str(s))      # 在子进程计算，并把结果发给redis
             sys.exit(0)                         # 然后子进程退出
     
     for pid in pids:
@@ -431,9 +433,7 @@ def pi(n):
 
 
 start = time.time()
-
 print(pi(100000000))    # 迭代一亿次
-
 end = time.time()
 
 print(f'time: {end - start}')
@@ -446,3 +446,125 @@ leo@192 test $ python3 tmp.py
 3.141592650405625
 time: 14.501644849777222
 ```
+
+## 文件
+
+我们用进程名来命名临时文件，`os.getpid()`可以获取进程自己的pid
+
+```py
+import os
+import sys
+import math
+import time
+
+
+def slice(mink, maxk):
+    s = 0.0
+    for k in range(int(mink), int(maxk)):
+        s += 1.0/(2*k+1)/(2*k+1)
+    return s
+
+
+def pi(n):
+    pids = []
+    unit = n / 10       # 每个unit大小的一千万
+
+    for i in range(10):
+        mink = unit * i
+        maxk = mink + unit
+        pid = os.fork()
+        if pid > 0:
+            pids.append(pid)
+        else:
+            s = slice(mink, maxk)
+            with open(f'{os.getpid()}', 'w') as f:   # 以进程名命名文件名
+                f.write(str(s))
+            sys.exit(0)                              # 子进程退出
+    sums = []
+    for pid in pids:
+        os.waitpid(pid, 0)
+        with open(f'{pid}', 'r') as f:
+            sums.append(float(f.read()))
+        os.remove(f'{pid}')                   # 删除通信文件
+    return math.sqrt(sum(sums) * 8)
+
+
+start = time.time()
+print(pi(100000000))    # 迭代一亿次
+end = time.time()
+
+print(f'time: {end - start}')
+```
+
+可以看到结果和redis的差不多
+
+```
+leo@192 test $ python3 multi_file.py 
+3.141592650405625
+time: 13.982477188110352
+```
+
+## 管道pipe
+
+把`read`和`write`系统调用的对象从具体的文件改为`pipe`返回的文件描述符，就是在使用管道了
+
+注意在写和读的时候有`encode`和`decode`，因为底层的参数要求是字节
+
+```py
+import os
+import sys
+import math
+import time
+
+
+def slice(mink, maxk):
+    s = 0.0
+    for k in range(int(mink), int(maxk)):
+        s += 1.0/(2*k+1)/(2*k+1)
+    return s
+
+
+def pi(n):
+    childs = {}      # key是子进程的pid，value是读描述符存起来
+    unit = n / 10
+
+    for i in range(10):
+        mink = unit * i
+        maxk = mink + unit
+        r, w = os.pipe()
+        pid = os.fork()
+        if pid > 0:
+            childs[pid] = r
+            os.close(w)         # 父进程关闭写描述符，只读
+        else:
+            os.close(r)                # 子进程关闭读描述符，只写
+            s = slice(mink, maxk)
+            os.write(w, str(s).encode())
+            os.close(w)                # 子进程写完了后，关闭写描述符
+            sys.exit(0)
+
+    sums = []
+    for pid, r in childs.items():
+        sums.append(float(os.read(r, 1024).decode()))
+        os.close(r)                    # 读完了，关闭文件描述符
+        os.waitpid(pid, 0)
+    
+    return math.sqrt(sum(sums) * 8)
+
+
+start = time.time()
+print(pi(100000000))    # 迭代一亿次
+end = time.time()
+
+print(f'time: {end - start}')
+```
+
+耗时跟redis和文件差不多
+
+```
+leo@192 test $ python3 multi_pipe.py 
+3.141592650405625
+time: 13.547497987747192
+```
+
+
