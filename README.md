@@ -392,7 +392,6 @@ import os
 import sys
 
 
-
 def slice(mink, maxk):
     s = 0.0
     for k in range(int(mink), int(maxk)):
